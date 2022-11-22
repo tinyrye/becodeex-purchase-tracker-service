@@ -8,5 +8,5 @@ type RewardsSpendAllocation struct {
 type RewardsAccumulateProgress struct {
 	// this field could be the Id or Name of the Payer since
 	Payer *PayerAccount `json:"payer"`
-	Points int
+	Points int `json:"points"`
 }

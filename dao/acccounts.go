@@ -1,6 +1,7 @@
 package dao
 
 import (
+	"fmt"
 	"log"
 	"regexp"
 	"strings"
@@ -25,7 +26,23 @@ type LocalPayerStore struct {
 	cacheByTokens map[string][]*domain.PayerAccount
 }
 
-func (s *LocalPayerStore) AddAccount(payer *domain.PayerAccount) {
+func NewLocalPayerStore() *LocalPayerStore {
+	return &LocalPayerStore{
+		make(map[string]*domain.PayerAccount),
+		make(map[string]*domain.PayerAccount),
+		make(map[string][]*domain.PayerAccount),
+	}
+}
+
+type AccountExistsError struct {
+	PayerId string
+}
+
+func (e AccountExistsError) Error() string {
+	return fmt.Sprintf("Payer Account already registered: %s", e.PayerId)
+}
+
+func (s *LocalPayerStore) AddAccount(payer *domain.PayerAccount) error {
 	s.cacheById[payer.Id] = payer
 	s.cacheByName[payer.Name] = payer
 	nameTokens := tokenizeSearchableTerm(payer.Name)
@@ -37,6 +54,8 @@ func (s *LocalPayerStore) AddAccount(payer *domain.PayerAccount) {
 		}
 		cacheOfToken = append(cacheOfToken, payer)
 	}
+	log.Printf("Added account %s with tokens %s", payer.Id, nameTokens)
+	return nil
 }
 
 func (s *LocalPayerStore) ListAllAccounts() []*domain.PayerAccount {
@@ -70,7 +89,9 @@ func (s *LocalPayerStore) SearchWithNameQuery(query string) []*domain.PayerAccou
 func tokenizeSearchableTerm(name string) []string {
 	var searchableTokens []string = make([]string, 0)
 	var whitespaceTokenizer, whitespaceTokenizerErr = regexp.Compile("\\s")
-	log.Fatal(whitespaceTokenizerErr)
+	if whitespaceTokenizerErr != nil {
+		log.Fatalf("REGEX error %s", whitespaceTokenizerErr)
+	}
 	var tokensAroundWhitespace = whitespaceTokenizer.FindAll([]byte(name), -1)
 	for _, tokenAroundWhitespace := range tokensAroundWhitespace {
 		searchableTokens = append(searchableTokens, strings.ToLower(string(tokenAroundWhitespace)))

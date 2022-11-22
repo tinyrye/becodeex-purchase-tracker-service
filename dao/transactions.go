@@ -12,7 +12,7 @@ func (t RewardTransactionByTimestamp) Len() int {
 }
 
 func (t RewardTransactionByTimestamp) Less(i int, j int) bool {
-	return (*t[i].TransactionTimestamp).Before(*t[j].TransactionTimestamp)
+	return (t[i].TransactionTimestamp).Before(t[j].TransactionTimestamp)
 }
 
 func (t RewardTransactionByTimestamp) Swap(i int, j int) {
@@ -30,8 +30,8 @@ type LocalTransactionsStore struct {
 	cache []*domain.RewardTransaction
 }
 
-func NewLocalTransactionsStore(payers *PayerAccountsDao) *LocalTransactionsStore {
-	return &LocalTransactionsStore{}
+func NewLocalTransactionsStore() *LocalTransactionsStore {
+	return &LocalTransactionsStore{make([]*domain.RewardTransaction, 0)}
 }
 
 func (store *LocalTransactionsStore) AddTransaction(transaction *domain.RewardTransaction) {

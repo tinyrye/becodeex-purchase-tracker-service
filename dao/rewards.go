@@ -1,6 +1,7 @@
 package dao
 
 import (
+	"log"
 	"purchase-tracker-service/domain"
 )
 
@@ -14,10 +15,11 @@ type LocalRewardsStore struct {
 }
 
 func NewLocalRewardsStore() *LocalRewardsStore {
-	return &LocalRewardsStore{}
+	return &LocalRewardsStore{make(map[string]int)}
 }
 
 func (store *LocalRewardsStore) AddTransaction(transaction *domain.RewardTransaction) {
+	log.Printf("Payer transaction %s : %d", transaction.Payer, transaction.Points)
 	var currentProgress, exists = store.cache[transaction.Payer]
 	if !exists {
 		currentProgress = 0

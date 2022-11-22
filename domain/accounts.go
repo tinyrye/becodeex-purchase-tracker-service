@@ -5,8 +5,7 @@ import (
 )
 
 type PayerAccount struct {
-	Id string
-	Name string
-	Balance int
-	CreationTimestamp *time.Time
+	Id string `json:"id"`
+	Name string `json:"name"`
+	CreationTimestamp time.Time `json:"creationTimestamp"`
 }
