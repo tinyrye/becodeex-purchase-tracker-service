@@ -2,20 +2,23 @@ package service
 
 import (
 	"fmt"
+	"log"
 	"math"
+	"time"
 	"purchase-tracker-service/dao"
 	"purchase-tracker-service/domain"
 )
 
 type TransactionService interface {
-	// When a Purchaser makes a new Purchase, this will accumulate Points under a Payer.
-	ReceiveNewPurchase(transaction *domain.RewardTransaction) (*domain.RewardsAccumulateProgress, error)
-	// Get the Current Points Balance/Progress for a single Payer.
-	GetPointsProgressForPayer(payerId string) *domain.RewardsAccumulateProgress
+	AddPayer(id string, name string) error
 	// Get the Current Points Balance/Progress for all known Payers.
 	GetAllPointsProgressesForPayers() []*domain.RewardsAccumulateProgress
+	// Get the Current Points Balance/Progress for a single Payer.
+	GetPointsProgressForPayer(payerId string) (*domain.RewardsAccumulateProgress, error)
+	// When a Purchaser makes a new Purchase, this will accumulate Points under a Payer.
+	ReceiveNewPurchase(transaction *domain.RewardTransaction) (*domain.RewardsAccumulateProgress, error)
 	// Spend Points using internal allocation logic gather values from Partners' balances.
-	SpendPoints(numberOfPoints int) []*domain.RewardsAccumulateProgress
+	SpendPoints(numberOfPoints int) []*domain.RewardsSpendAllocation
 }
 
 type LocalTransactionService struct {
@@ -26,20 +29,18 @@ type LocalTransactionService struct {
 
 func NewLocalTransactionService() *LocalTransactionService {
 	return &LocalTransactionService{
-		&dao.LocalPayerStore{},
-		&dao.LocalTransactionsStore{},
-		&dao.LocalRewardsStore{},
+		dao.NewLocalPayerStore(),
+		dao.NewLocalTransactionsStore(),
+		dao.NewLocalRewardsStore(),
 	}
 }
 
-func (s *LocalTransactionService) ReceiveNewPurchase(transaction *domain.RewardTransaction) (*domain.RewardsAccumulateProgress, error) {
-	var payer = s.payerStore.GetWithId(transaction.Payer)
-	if payer == nil {
-		return nil, PayerNotFoundError{transaction.Payer}
-	}
-	s.transactionsStore.AddTransaction(transaction)
-	s.rewardsStore.AddTransaction(transaction)
-	return s.getPointsProgressWithPayer(payer), nil
+func (s *LocalTransactionService) AddPayer(id string, name string) error {
+	return s.payerStore.AddAccount(&domain.PayerAccount{
+		id,
+		name,
+		time.Now(),
+	})
 }
 
 func (s *LocalTransactionService) GetPointsProgressForPayer(payerId string) (*domain.RewardsAccumulateProgress, error) {
@@ -74,19 +75,44 @@ func (s *LocalTransactionService) GetAllPointsProgressesForPayers() []*domain.Re
 
 func (s *LocalTransactionService) getAllPointsForPayers() map[string]int {
 	var allPayers = s.payerStore.ListAllAccounts()
-	var pointsByPayer map[string]int
+	var pointsByPayer map[string]int = make(map[string]int)
 	for _, payer := range allPayers {
 		pointsByPayer[payer.Id] = s.getPointsForPayer(payer.Id)
 	}
 	return pointsByPayer
 }
 
+func (s *LocalTransactionService) ReceiveNewPurchase(transaction *domain.RewardTransaction) (*domain.RewardsAccumulateProgress, error) {
+	var payer = s.payerStore.GetWithId(transaction.Payer)
+	if payer == nil {
+		return nil, PayerNotFoundError{transaction.Payer}
+	}
+	transaction.TransactionTimestamp = time.Now()
+	log.Printf("Adding Transaction %s", transaction)
+	s.addTransaction(transaction)
+	return s.getPointsProgressWithPayer(payer), nil
+}
+
+func (s *LocalTransactionService) creditPayer(payerId string, pointsToCredit int) {
+	log.Printf("Payer %s being credited %d", payerId, pointsToCredit)
+	s.addTransaction(&domain.RewardTransaction{
+		payerId,
+		-pointsToCredit,
+		time.Now(),
+	})
+}
+
+func (s *LocalTransactionService) addTransaction(transaction *domain.RewardTransaction) {
+	s.transactionsStore.AddTransaction(transaction)
+	s.rewardsStore.AddTransaction(transaction)
+}
+
 func (s *LocalTransactionService) SpendPoints(numberOfPoints int) []*domain.RewardsSpendAllocation {
 	var txLog = s.transactionsStore.GetTransactionLog()
 	var totalSpendBalance int = numberOfPoints
 	var currentBalances = s.getAllPointsForPayers()
-	var payerSpendAllocation map[string]int
-	var payerSpendBalance map[string]int
+	var payerSpendAllocation map[string]int = make(map[string]int)
+	var payerSpendBalance map[string]int = make(map[string]int)
 	for payer, balance := range currentBalances {
 		payerSpendBalance[payer] = balance
 		payerSpendAllocation[payer] = 0
@@ -94,24 +120,28 @@ func (s *LocalTransactionService) SpendPoints(numberOfPoints int) []*domain.Rewa
 	for _, tx := range txLog {
 		currentPayerBalance := payerSpendBalance[tx.Payer]
 		currentPayerAllocation := payerSpendAllocation[tx.Payer]
-		if tx.Points > 0 {
-			// we are taking from the Payer
-			amountToTake := int(math.Min(float64(currentPayerBalance), float64(tx.Points)))
-			payerSpendBalance[tx.Payer] = currentPayerBalance - amountToTake
-			payerSpendAllocation[tx.Payer] = currentPayerAllocation + amountToTake
-			totalSpendBalance = totalSpendBalance - amountToTake
-		} else if tx.Points < 0 {
-			// we are taking from the Payer
-			amountToGive := int(math.Max(float64(currentPayerBalance), float64(tx.Points)))
-			payerSpendBalance[tx.Payer] = currentPayerBalance + amountToGive
-			payerSpendAllocation[tx.Payer] = currentPayerAllocation - amountToGive
-			totalSpendBalance = totalSpendBalance + amountToGive
+		if tx.Points != 0 {
+			// we are applying points to a rewards to removing points from the reward
+			// depending on whether the transaction is a negative or positive.
+			amountToApply := int(math.Min(math.Min(float64(currentPayerBalance), float64(tx.Points)), float64(totalSpendBalance)))
+			payerSpendBalance[tx.Payer] = currentPayerBalance - amountToApply
+			payerSpendAllocation[tx.Payer] = currentPayerAllocation + amountToApply
+			totalSpendBalance = totalSpendBalance - amountToApply
+			log.Printf("Apply %d points from Payer %s and resulting in a points allocation balance of %d", amountToApply, tx.Payer, totalSpendBalance)
 		}
 		if totalSpendBalance == 0 {
 			break
 		}
 	}
+	// Now, we have to credit these payer accounts the amount of Points being spent here
+	s.creditPayerAccountsViaAllocation(payerSpendAllocation)
 	return s.buildRewardAllocations(payerSpendAllocation)
+}
+
+func (s *LocalTransactionService) creditPayerAccountsViaAllocation(spendAllocationByPayerId map[string]int) {
+	for payerId, pointsSpent := range spendAllocationByPayerId {
+		s.creditPayer(payerId, pointsSpent)
+	}
 }
 
 func (s *LocalTransactionService) buildRewardAllocations(spendAllocationByPayerId map[string]int) []*domain.RewardsSpendAllocation {
