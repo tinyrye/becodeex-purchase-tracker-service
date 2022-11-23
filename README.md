@@ -17,14 +17,22 @@
 1. Add/List Payers
 2. Obtain Payer Balance per Purchaser.
 3. Observe Purchase Transaction of a Purchaser.
+4. Spend Points to claim as Rewards.
 
 ## How to Use ##
 
+The quick answer for people reviewing this code exercise:
+
+1. `./build.sh`
+2. `./test.sh`
+
+These two steps build the app, then run the Go Unit Tests, and lastly start the http services and execute transactions
+and point spends to prove whether the functionality works as intended.
+
 ### Prerequisite ###
 
-A Linux or Unix like system with `golang` installed at 1.18
-
-Optional prerequisite of `jq` [JQ](https://stedolan.github.io/jq) is used in example to format responses.
+A Linux or Unix like system with `golang` installed at `1.18`.
+To run `./test.sh`, please install `jq` if it is not already provided by your distribution.
 
 ### Building ###
 
