@@ -107,9 +107,11 @@ func (s *LocalTransactionService) addTransaction(transaction *domain.RewardTrans
 	s.rewardsStore.AddTransaction(transaction)
 }
 
+// TODO: I do not recall instructions on how the service should behave if we are unable to grab
+//       the number of points requested from Payers.
 func (s *LocalTransactionService) SpendPoints(numberOfPoints int) []*domain.RewardsSpendAllocation {
 	var txLog = s.transactionsStore.GetTransactionLog()
-	var totalSpendBalance int = numberOfPoints
+	var currentSpendBalance int = numberOfPoints
 	var currentBalances = s.getAllPointsForPayers()
 	var payerSpendAllocation map[string]int = make(map[string]int)
 	var payerSpendBalance map[string]int = make(map[string]int)
@@ -123,13 +125,15 @@ func (s *LocalTransactionService) SpendPoints(numberOfPoints int) []*domain.Rewa
 		if tx.Points != 0 {
 			// we are applying points to a rewards to removing points from the reward
 			// depending on whether the transaction is a negative or positive.
-			amountToApply := int(math.Min(math.Min(float64(currentPayerBalance), float64(tx.Points)), float64(totalSpendBalance)))
+			amountToApply := int(math.Min(math.Min(float64(currentPayerBalance), float64(tx.Points)), float64(currentSpendBalance)))
+			// TODO: there is a logical issue in that there is mathematical borrowing happening from later transactions
+			// that needs to be discounted when later transactions are observed.
 			payerSpendBalance[tx.Payer] = currentPayerBalance - amountToApply
 			payerSpendAllocation[tx.Payer] = currentPayerAllocation + amountToApply
-			totalSpendBalance = totalSpendBalance - amountToApply
-			log.Printf("Apply %d points from Payer %s and resulting in a points allocation balance of %d", amountToApply, tx.Payer, totalSpendBalance)
+			currentSpendBalance = currentSpendBalance - amountToApply
+			log.Printf("Apply %d points from Payer %s and resulting in a points allocation balance of %d", amountToApply, tx.Payer, currentSpendBalance)
 		}
-		if totalSpendBalance == 0 {
+		if currentSpendBalance == 0 {
 			break
 		}
 	}

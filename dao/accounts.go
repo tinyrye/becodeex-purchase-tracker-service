@@ -12,6 +12,7 @@ const (
 	whitespaceTokenizerPattern = "\\s"
 )
 
+// This Interface reflects the desired contract for storing and retrieving Payers.
 type PayerAccountsDao interface {
 	AddAccount(*domain.PayerAccount)
 	ListAllAccounts() []*domain.PayerAccount
@@ -20,7 +21,9 @@ type PayerAccountsDao interface {
 	SearchWithNameQuery(query string) []*domain.PayerAccount
 }
 
-type LocalPayerStore struct {
+// This concrete implementation makes the object access only require in-memory map objects for
+// storage and retrieval.
+		type LocalPayerStore struct {
 	cacheById map[string]*domain.PayerAccount
 	cacheByName map[string]*domain.PayerAccount
 	cacheByTokens map[string][]*domain.PayerAccount
